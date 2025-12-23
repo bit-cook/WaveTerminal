@@ -209,6 +209,29 @@ function addTestMarkerDecoration(terminal: Terminal, marker: TermTypes.IMarker, 
     });
 }
 
+function checkCommandForTelemetry(decodedCmd: string) {
+    if (!decodedCmd) {
+        return;
+    }
+
+    if (decodedCmd.startsWith("ssh ")) {
+        recordTEvent("conn:connect", { "conn:conntype": "ssh-manual" });
+        return;
+    }
+
+    const editorsRegex = /^(vim|vi|nano|nvim)\b/;
+    if (editorsRegex.test(decodedCmd)) {
+        recordTEvent("action:term", { "action:type": "cli-edit" });
+        return;
+    }
+
+    const tailFollowRegex = /(^|\|\s*)tail\s+-[fF]\b/;
+    if (tailFollowRegex.test(decodedCmd)) {
+        recordTEvent("action:term", { "action:type": "cli-tailf" });
+        return;
+    }
+}
+
 // OSC 16162 - Shell Integration Commands
 // See aiprompts/wave-osc-16162.md for full documentation
 type ShellIntegrationStatus = "ready" | "running-command";
@@ -274,9 +297,7 @@ function handleOsc16162Command(data: string, blockId: string, loaded: boolean, t
                         const decodedCmd = base64ToString(cmd.data.cmd64);
                         rtInfo["shell:lastcmd"] = decodedCmd;
                         globalStore.set(termWrap.lastCommandAtom, decodedCmd);
-                        if (decodedCmd?.startsWith("ssh ")) {
-                            recordTEvent("conn:connect", { "conn:conntype": "ssh-manual" });
-                        }
+                        checkCommandForTelemetry(decodedCmd);
                     } catch (e) {
                         console.error("Error decoding cmd64:", e);
                         rtInfo["shell:lastcmd"] = null;
@@ -342,6 +363,7 @@ function handleOsc16162Command(data: string, blockId: string, loaded: boolean, t
 }
 
 export class TermWrap {
+    tabId: string;
     blockId: string;
     ptyOffset: number;
     dataBytesProcessed: number;
@@ -380,12 +402,14 @@ export class TermWrap {
     lastPasteTime: number = 0;
 
     constructor(
+        tabId: string,
         blockId: string,
         connectElem: HTMLDivElement,
         options: TermTypes.ITerminalOptions & TermTypes.ITerminalInitOnlyOptions,
         waveOptions: TermWrapOptions
     ) {
         this.loaded = false;
+        this.tabId = tabId;
         this.blockId = blockId;
         this.sendDataHandler = waveOptions.sendDataHandler;
         this.ptyOffset = 0;
@@ -697,11 +721,10 @@ export class TermWrap {
 
     async resyncController(reason: string) {
         dlog("resync controller", this.blockId, reason);
-        const tabId = globalStore.get(atoms.staticTabId);
         const rtOpts: RuntimeOpts = { termsize: { rows: this.terminal.rows, cols: this.terminal.cols } };
         try {
             await RpcApi.ControllerResyncCommand(TabRpcClient, {
-                tabid: tabId,
+                tabid: this.tabId,
                 blockid: this.blockId,
                 rtopts: rtOpts,
             });
