@@ -20,7 +20,7 @@ import {
     replaceBlock,
     WOS,
 } from "@/app/store/global";
-import { TabBarModel } from "@/app/tab/tabbar-model";
+import { getActiveTabModel } from "@/app/store/tab-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab, getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import * as keyutil from "@/util/keyutil";
@@ -124,12 +124,6 @@ function getStaticTabBlockCount(): number {
     return tabData?.blockids?.length ?? 0;
 }
 
-function isStaticTabPinned(): boolean {
-    const ws = globalStore.get(atoms.workspace);
-    const tabId = globalStore.get(atoms.staticTabId);
-    return ws.pinnedtabids?.includes(tabId) ?? false;
-}
-
 function simpleCloseStaticTab() {
     const ws = globalStore.get(atoms.workspace);
     const tabId = globalStore.get(atoms.staticTabId);
@@ -138,11 +132,6 @@ function simpleCloseStaticTab() {
 }
 
 function uxCloseBlock(blockId: string) {
-    if (isStaticTabPinned() && getStaticTabBlockCount() === 1) {
-        TabBarModel.getInstance().jiggleActivePinnedTab();
-        return;
-    }
-
     const workspaceLayoutModel = WorkspaceLayoutModel.getInstance();
     const isAIPanelOpen = workspaceLayoutModel.getAIPanelVisible();
     if (isAIPanelOpen && getStaticTabBlockCount() === 1) {
@@ -174,10 +163,6 @@ function genericClose() {
     const focusType = FocusManager.getInstance().getFocusType();
     if (focusType === "waveai") {
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(false);
-        return;
-    }
-    if (isStaticTabPinned() && getStaticTabBlockCount() === 1) {
-        TabBarModel.getInstance().jiggleActivePinnedTab();
         return;
     }
 
@@ -265,7 +250,7 @@ function switchBlockInDirection(direction: NavigateDirection) {
 }
 
 function getAllTabs(ws: Workspace): string[] {
-    return [...(ws.pinnedtabids ?? []), ...(ws.tabids ?? [])];
+    return ws.tabids ?? [];
 }
 
 function switchTabAbs(index: number) {
@@ -531,10 +516,6 @@ function registerGlobalKeys() {
         return true;
     });
     globalKeyMap.set("Cmd:Shift:w", () => {
-        if (isStaticTabPinned()) {
-            TabBarModel.getInstance().jiggleActivePinnedTab();
-            return true;
-        }
         simpleCloseStaticTab();
         return true;
     });
@@ -587,12 +568,16 @@ function registerGlobalKeys() {
         }
     });
     globalKeyMap.set("Ctrl:Shift:i", () => {
-        const curMI = globalStore.get(atoms.isTermMultiInput);
+        const tabModel = getActiveTabModel();
+        if (tabModel == null) {
+            return true;
+        }
+        const curMI = globalStore.get(tabModel.isTermMultiInput);
         if (!curMI && countTermBlocks() <= 1) {
             // don't turn on multi-input unless there are 2 or more basic term blocks
             return true;
         }
-        globalStore.set(atoms.isTermMultiInput, !curMI);
+        globalStore.set(tabModel.isTermMultiInput, !curMI);
         return true;
     });
     for (let idx = 1; idx <= 9; idx++) {

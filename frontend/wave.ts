@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { App } from "@/app/app";
+import { GlobalModel } from "@/app/store/global-model";
 import {
     globalRefocus,
     registerBuilderGlobalKeys,
@@ -30,6 +31,7 @@ import {
     removeNotificationById,
     subscribeToConnEvents,
 } from "@/store/global";
+import { activeTabIdAtom } from "@/store/tab-model";
 import * as WOS from "@/store/wos";
 import { loadFonts } from "@/util/fontutil";
 import { setKeyUtilPlatform } from "@/util/keyutil";
@@ -126,50 +128,37 @@ async function reinitWave() {
 }
 
 function reloadAllWorkspaceTabs(ws: Workspace) {
-    if (ws == null || (!ws.tabids?.length && !ws.pinnedtabids?.length)) {
+    if (ws == null || !ws.tabids?.length) {
         return;
     }
     ws.tabids?.forEach((tabid) => {
-        WOS.reloadWaveObject<Tab>(WOS.makeORef("tab", tabid));
-    });
-    ws.pinnedtabids?.forEach((tabid) => {
         WOS.reloadWaveObject<Tab>(WOS.makeORef("tab", tabid));
     });
 }
 
 function loadAllWorkspaceTabs(ws: Workspace) {
-    if (ws == null || (!ws.tabids?.length && !ws.pinnedtabids?.length)) {
+    if (ws == null || !ws.tabids?.length) {
         return;
     }
     ws.tabids?.forEach((tabid) => {
-        WOS.getObjectValue<Tab>(WOS.makeORef("tab", tabid));
-    });
-    ws.pinnedtabids?.forEach((tabid) => {
         WOS.getObjectValue<Tab>(WOS.makeORef("tab", tabid));
     });
 }
 
 async function initWave(initOpts: WaveInitOpts) {
     getApi().sendLog("Init Wave " + JSON.stringify(initOpts));
-    console.log(
-        "Wave Init",
-        "tabid",
-        initOpts.tabId,
-        "clientid",
-        initOpts.clientId,
-        "windowid",
-        initOpts.windowId,
-        "platform",
-        platform
-    );
-    initGlobal({
+    const globalInitOpts: GlobalInitOptions = {
         tabId: initOpts.tabId,
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,
         platform,
         environment: "renderer",
         primaryTabStartup: initOpts.primaryTabStartup,
-    });
+    };
+    console.log("Wave Init", globalInitOpts);
+    globalStore.set(activeTabIdAtom, initOpts.tabId);
+    await GlobalModel.getInstance().initialize(globalInitOpts);
+    initGlobal(globalInitOpts);
     (window as any).globalAtoms = atoms;
 
     // Init WPS event handlers
@@ -236,25 +225,16 @@ async function initBuilderWrap(initOpts: BuilderInitOpts) {
 
 async function initBuilder(initOpts: BuilderInitOpts) {
     getApi().sendLog("Init Builder " + JSON.stringify(initOpts));
-    console.log(
-        "Tsunami Builder Init",
-        "builderid",
-        initOpts.builderId,
-        "clientid",
-        initOpts.clientId,
-        "windowid",
-        initOpts.windowId,
-        "platform",
-        platform
-    );
-
-    initGlobal({
+    const globalInitOpts: GlobalInitOptions = {
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,
         platform,
         environment: "renderer",
         builderId: initOpts.builderId,
-    });
+    };
+    console.log("Tsunami Builder Init", globalInitOpts);
+    await GlobalModel.getInstance().initialize(globalInitOpts);
+    initGlobal(globalInitOpts);
     (window as any).globalAtoms = atoms;
 
     const globalWS = initWshrpc(makeBuilderRouteId(initOpts.builderId));
